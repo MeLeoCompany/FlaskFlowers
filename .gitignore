@@ -1,3 +1,8 @@
 .venv/
 .idea
 **/__pycache__/
+app/static/
+app/conf/
+.env
+es-docker/.env
+config.py

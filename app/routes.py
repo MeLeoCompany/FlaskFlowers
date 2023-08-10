@@ -7,6 +7,10 @@ from werkzeug.exceptions import RequestEntityTooLarge
 import elasticsearch
 import os
 from PIL import Image
+import torch
+import torchvision
+from torchvision import transforms as T
+from .machin_learning import model_init, param_init
 
 INFER_ENDPOINT = "/_ml/trained_models/{model}/deployment/_infer"
 INFER_MODEL_IM_SEARCH = 'sentence-transformers__clip-vit-b-32-multilingual-v1'
@@ -21,6 +25,21 @@ TLS_VERIFY = app.config['VERIFY_TLS']
 
 app_models = {}
 
+DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+def mymodel_init():
+    url_model_dir = 'static/models/full_model.pth'
+    project_root = os.path.abspath(os.path.dirname(__file__))
+    url_model = os.path.join(project_root, url_model_dir)
+    model_new = model_init().to(DEVICE)
+    _, optimizer_new, _ = param_init(model_new)
+    checkpoint = torch.load(url_model, map_location=DEVICE)
+    model_new.load_state_dict(checkpoint['model_state_dict'])
+    optimizer_new.load_state_dict(checkpoint['optimizer_state_dict'])
+    model_new.eval()
+    return model_new
+
+my_model_bbox = mymodel_init()
 
 @app.route('/')
 @app.route('/index')
@@ -38,7 +57,7 @@ def image_search():
         return render_template('image_search.html', title='Image search', model_up=False,
                                index_name=index_name, missing_index=True)
 
-    if app_models.get(INFER_MODEL_IM_SEARCH) == 'started':
+    if True: # app_models.get(INFER_MODEL_IM_SEARCH) == 'started':
         form = SearchForm()
 
         # Check for  method
@@ -92,12 +111,13 @@ def image_search():
 @app.route('/similar_image', methods=['GET', 'POST'])
 def similar_image():
     index_name = INDEX_IM_EMBED
+    global my_model_bbox
     if not es.indices.exists(index=index_name):
         return render_template('similar_image.html', title='Similar image', index_name=index_name, missing_index=True)
 
     is_model_up_and_running(INFER_MODEL_IM_SEARCH)
 
-    if app_models.get(INFER_MODEL_IM_SEARCH) == 'started':
+    if True: # app_models.get(INFER_MODEL_IM_SEARCH) == 'started':
         form = InputFileForm()
         if request.method == 'POST':
             if form.validate_on_submit():
@@ -122,7 +142,7 @@ def similar_image():
                 form.file.data.save(upload_dir + filename)
 
                 image = Image.open(file_path)
-                embedding = image_embedding(image, img_model)
+                embedding = image_embedding(image, img_model, my_model_bbox)
 
                 # Execute KN search over the image dataset
                 search_response = knn_search_images(embedding.tolist())
@@ -186,9 +206,14 @@ def infer_trained_model(query: str, model: str):
     response = es.ml.infer_trained_model(model_id=model, docs=[{"text_field": query}])
     return response['inference_results'][0]
 
-
-def image_embedding(image, model):
-    return model.encode(image)
+def image_embedding(image, model, my_model_bbox):
+    transformer = T.ToTensor()
+    img = transformer(image)
+    output = my_model_bbox([img.to(DEVICE)])
+    bbox_cor = output[0]['boxes'][0].detach().numpy()
+    cropped_image = image.crop(bbox_cor)
+    cropped_image.save("app/static/backupimages/cropped_image.jpg")
+    return model.encode(cropped_image)
 
 
 def is_model_up_and_running(model: str):

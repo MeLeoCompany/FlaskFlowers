@@ -8,8 +8,8 @@ tqdm~=4.64.1
 
 # Eland for import NLP models
 eland>=8,<9
-torch~=1.11.0
-
+# torch~=1.11.0
+torch~=2.0.1
 # required by '.env' and '.flaskenv' files
 python-dotenv~=0.21.1
 
