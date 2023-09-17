@@ -43,6 +43,7 @@ def my_model_init():
 my_model_bbox = my_model_init()
 
 
+
 @app.route('/')
 @app.route('/index')
 def index():
