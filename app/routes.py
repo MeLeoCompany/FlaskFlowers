@@ -1,16 +1,16 @@
-from app import app, img_model, es
+from app import app, img_model, img_model_sentence, es
 from flask import render_template, redirect, url_for, request, send_file
 from app.searchForm import SearchForm
 from app.inputFileForm import InputFileForm
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
-import elasticsearch
-import os
-from PIL import Image
 import torch
 import torchvision
 from torchvision import transforms as T
 from .machin_learning import model_init, param_init
+import elasticsearch
+import os
+from PIL import Image
 
 INFER_ENDPOINT = "/_ml/trained_models/{model}/deployment/_infer"
 INFER_MODEL_IM_SEARCH = 'sentence-transformers__clip-vit-b-32-multilingual-v1'
@@ -27,7 +27,7 @@ app_models = {}
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-def mymodel_init():
+def my_model_init():
     url_model_dir = 'static/models/full_model.pth'
     project_root = os.path.abspath(os.path.dirname(__file__))
     url_model = os.path.join(project_root, url_model_dir)
@@ -39,7 +39,9 @@ def mymodel_init():
     model_new.eval()
     return model_new
 
-my_model_bbox = mymodel_init()
+
+my_model_bbox = my_model_init()
+
 
 @app.route('/')
 @app.route('/index')
@@ -50,14 +52,14 @@ def index():
 @app.route('/image_search', methods=['GET', 'POST'])
 def image_search():
     global app_models
-    is_model_up_and_running(INFER_MODEL_IM_SEARCH)
+    # is_model_up_and_running(INFER_MODEL_IM_SEARCH)
 
     index_name = INDEX_IM_EMBED
     if not es.indices.exists(index=index_name):
         return render_template('image_search.html', title='Image search', model_up=False,
                                index_name=index_name, missing_index=True)
 
-    if True: # app_models.get(INFER_MODEL_IM_SEARCH) == 'started':
+    if True or app_models.get(INFER_MODEL_IM_SEARCH) == 'started':
         form = SearchForm()
 
         # Check for  method
@@ -81,7 +83,6 @@ def image_search():
                     source=True)
 
                 if (image_info is not None):
-
                     found_image = image_info['hits']['hits'][0]["_source"]
                     found_image_embedding = found_image['image_embedding']
                     search_response = knn_search_images(
@@ -98,14 +99,15 @@ def image_search():
 
                 return render_template('image_search.html', title='Image search', form=form,
                                        search_results=search_response['hits']['hits'],
-                                       query=form.searchbox.data,  model_up=True)
+                                       query=form.searchbox.data, model_up=True)
 
             else:
                 return redirect(url_for('image_search'))
         else:  # GET
             return render_template('image_search.html', title='Image search', form=form, model_up=True)
     else:
-        return render_template('image_search.html', title='Image search', model_up=False, model_name=INFER_MODEL_IM_SEARCH)
+        return render_template('image_search.html', title='Image search', model_up=False,
+                               model_name=INFER_MODEL_IM_SEARCH)
 
 
 @app.route('/similar_image', methods=['GET', 'POST'])
@@ -115,45 +117,79 @@ def similar_image():
     if not es.indices.exists(index=index_name):
         return render_template('similar_image.html', title='Similar image', index_name=index_name, missing_index=True)
 
-    is_model_up_and_running(INFER_MODEL_IM_SEARCH)
-
-    if True: # app_models.get(INFER_MODEL_IM_SEARCH) == 'started':
+    # is_model_up_and_running(INFER_MODEL_IM_SEARCH)
+    # if app_models.get(INFER_MODEL_IM_SEARCH) == 'started':
+    if True:
         form = InputFileForm()
         if request.method == 'POST':
             if form.validate_on_submit():
-                if request.files['file'].filename == '':
+                if request.files['file'].filename == '' and form.searchbox.data == '' or form.searchbox.data is None:
                     return render_template('similar_image.html', title='Similar image', form=form,
                                            err='No file selected', model_up=True)
 
-                filename = secure_filename(form.file.data.filename)
+                if request.files['file'].filename != '':
+                    filename = secure_filename(form.file.data.filename)
+                    print(filename)
+                    url_dir = 'static/tmp-uploads/'
+                    upload_dir = 'app/' + url_dir
+                    upload_dir_exists = os.path.exists(upload_dir)
+                    if not upload_dir_exists:
+                        # Create a new directory because it does not exist
+                        os.makedirs(upload_dir)
 
-                url_dir = 'static/tmp-uploads/'
-                upload_dir = 'app/' + url_dir
-                upload_dir_exists = os.path.exists(upload_dir)
-                if not upload_dir_exists:
-                    # Create a new directory because it does not exist
-                    os.makedirs(upload_dir)
-
-                # physical file-dir path
-                file_path = upload_dir + filename
-                # relative file path for URL
-                url_path_file = url_dir + filename
-                # Save the image
-                form.file.data.save(upload_dir + filename)
-
-                image = Image.open(file_path)
-                embedding = image_embedding(image, img_model, my_model_bbox)
+                    # physical file-dir path
+                    file_path = upload_dir + filename
+                    # relative file path for URL
+                    # url_path_file = url_dir + filename
+                    # Save the image
+                    form.file.data.save(upload_dir + filename)
+                    image = Image.open(file_path)
+                    embedding, cropped_image = image_embedding(image, img_model, my_model_bbox)
+                    url_path_file = url_dir + '_cropped_'+ filename
+                    cropped_image.save(upload_dir + '_cropped_'+ filename)
+                    sentence_data = ''
+                else:
+                    sentence_data = form.searchbox.data
+                    embedding = sentence_embedding(sentence_data)
+                    url_path_file = ''
 
                 # Execute KN search over the image dataset
                 search_response = knn_search_images(embedding.tolist())
+
+                # search_results = [
+                #     {"fields":{
+                #         "image_id":["6502ce1b82f2e1a00b405f40"],
+                #         "image_name":["Малиновый Пудинг"],
+                #         "article":["609446"],
+                #         "relative_path":["img1004.jpg"],
+                #         "_score":'90'
+                #     }},
+                #     {"fields":{
+                #         "image_id":["6502ce1b82f2e1a00b405f41"],
+                #         "image_name":["Восхитительные Пионы"],
+                #         "article":["608989"],
+                #         "relative_path":["img1021.jpg"],
+                #         "_score":'80'
+                #     }},
+                # ]
+                # search_response = {
+                #     "hits":{"hits":search_results}
+                # }
 
                 # Cleanup uploaded file after not needed
                 # if os.path.exists(file_path):
                 #     os.remove(file_path)
 
+                similar_hits = search_response['hits']['hits']
+
+                # print(len(similar_hits))
+                # if len(similar_hits) > 0:
+                #     print(similar_hits[0])
                 return render_template('similar_image.html', title='Similar image', form=form,
-                                       search_results=search_response['hits']['hits'],
-                                       original_file=url_path_file, model_up=True)
+                                       search_results=similar_hits,
+                                       original_file=url_path_file,
+                                       sentence_data=sentence_data,
+                                       similar_numbers=len(similar_hits), model_up=True)
             else:
                 return redirect(url_for('similar_image'))
         else:
@@ -181,12 +217,14 @@ def app_handle_413(e):
 
 
 def sentence_embedding(query: str):
-    response = es.ml.infer_trained_model(model_id=INFER_MODEL_IM_SEARCH, docs=[{"text_field": query}])
-    return response['inference_results'][0]
+    encode = img_model_sentence.encode(query)
+    return encode
+    # response = es.ml.infer_trained_model(model_id=INFER_MODEL_IM_SEARCH, docs=[{"text_field": query}])
+    # return response['inference_results'][0]
 
 
 def knn_search_images(dense_vector: list):
-    source_fields = ["image_id", "image_name", "relative_path"]
+    source_fields = ["image_id", "image_name", "img_url", "article"]
     query = {
         "field": "image_embedding",
         "query_vector": dense_vector,
@@ -206,14 +244,18 @@ def infer_trained_model(query: str, model: str):
     response = es.ml.infer_trained_model(model_id=model, docs=[{"text_field": query}])
     return response['inference_results'][0]
 
+
+# def image_embedding(image, model):
+#     return model.encode(image)
+
 def image_embedding(image, model, my_model_bbox):
     transformer = T.ToTensor()
     img = transformer(image)
     output = my_model_bbox([img.to(DEVICE)])
     bbox_cor = output[0]['boxes'][0].detach().numpy()
     cropped_image = image.crop(bbox_cor)
-    cropped_image.save("app/static/backupimages/cropped_image.jpg")
-    return model.encode(cropped_image)
+    # cropped_image.save("app/static/backupimages/cropped_image.jpg")
+    return model.encode(cropped_image), cropped_image
 
 
 def is_model_up_and_running(model: str):

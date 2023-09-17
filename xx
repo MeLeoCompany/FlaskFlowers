@@ -1,0 +1,2 @@
+GET /index1/_search
+{"query":{"must":[{"match":{"parents":"c8c633e63dfec3fda7b89e98acea54de1"}},{"match":{"type":"A2372577o30570o63222o20336o957492"}},{"regexp":{"object.A2372576o30570o63222o20275o220079.o7":"f3403140fadd9f3ea2b9dcac7b23b6bf2.*"}},{"should":[{"match":{"access":"db63ff2b0891caebcd9bc317b71ba3122"}},{"match":{"isaccess":true}},{"match":{"access":"oGroupDev"}}]}]}}

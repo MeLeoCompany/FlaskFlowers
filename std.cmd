@@ -1,0 +1,1 @@
+docker run --network image-search_default -p 5001:5001  -e ES_HOST='https://es01:9200' -e ES_USER='elastic' -e ES_PWD='changeme' flask-elastic-image-search:0.0.1

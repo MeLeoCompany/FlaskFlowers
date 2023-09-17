@@ -17,11 +17,18 @@
       "image_name": {
         "type" : "keyword"
       },
-      "relative_path" : {
+      "img_url" : {
+        "type" : "keyword"
+      },
+      "article" : {
+        "type" : "keyword"
+      },
+      "page_url" : {
         "type" : "keyword"
       },
       "exif" : {
         "properties" : {
+
           "location": {
             "type": "geo_point"
           },

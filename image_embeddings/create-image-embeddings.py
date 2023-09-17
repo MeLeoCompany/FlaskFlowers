@@ -1,6 +1,5 @@
 import os
 import sys
-import glob
 import time
 import json
 import argparse
@@ -8,9 +7,10 @@ from sentence_transformers import SentenceTransformer
 from elasticsearch import Elasticsearch, SSLError
 from elasticsearch.helpers import parallel_bulk
 from PIL import Image
-from tqdm import tqdm
 from datetime import datetime
 from exif import Image as exifImage
+import base64
+import io
 
 ES_HOST = "https://127.0.0.1:9200/"
 ES_USER = "elastic"
@@ -22,9 +22,9 @@ DELETE_EXISTING = True
 CHUNK_SIZE = 100
 
 PATH_TO_IMAGES = "../app/static/images/**/*.jp*g"
-PREFIX = "../app/static/images/"
+PREFIX = "..\\app\\static\\images\\"
 
-CA_CERT='../app/conf/ess-cloud.cer'
+CA_CERT = '../app/conf/ess-cloud.cer'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--es_host', dest='es_host', required=False, default=ES_HOST,
@@ -45,8 +45,8 @@ parser.add_argument('--timeout', dest='timeout', required=False, default=ES_TIME
 parser.add_argument('--delete_existing', dest='delete_existing', required=False, default=True,
                     action=argparse.BooleanOptionalAction,
                     help="Delete existing indices if they are present in the cluster. Default: True")
-parser.add_argument('--ca_certs', dest='ca_certs', required=False,# default=CA_CERT,
-                    help="Path to CA certificate.") # Default: ../app/conf/ess-cloud.cer")
+parser.add_argument('--ca_certs', dest='ca_certs', required=False,  # default=CA_CERT,
+                    help="Path to CA certificate.")  # Default: ../app/conf/ess-cloud.cer")
 parser.add_argument('--extract_GPS_location', dest='gps_location', required=False, default=False,
                     action=argparse.BooleanOptionalAction,
                     help="[Experimental] Extract GPS location from photos if available. Default: False")
@@ -58,44 +58,52 @@ def main():
     global args
     lst = []
 
+    json_path = 'C:\\PapaWK\\flask-elastic-image-search\\json_in\\all_pics_base.pics_data.json'
+    f_json = open(json_path, encoding='utf-8')
+    data = json.load(f_json)
+    img_model = None
+
     start_time = time.perf_counter()
-    img_model = SentenceTransformer('clip-ViT-B-32')
     duration = time.perf_counter() - start_time
     print(f'Duration load model = {duration}')
 
-    filenames = glob.glob(PATH_TO_IMAGES, recursive=True)
     start_time = time.perf_counter()
-    for filename in tqdm(filenames, desc='Processing files', total=len(filenames)):
-        image = Image.open(filename)
+    # for filename in tqdm(filenames, desc='Processing files', total=len(filenames)):
+    for item in data:
+        doc = {'image_id': item['_id']['$oid'],
+               'image_name': item['title'], 'img_url': item['source_image_url'],
+               'page_url': item['product_page_url'], 'article': item['article'], 'exif': {}
+               }
 
-        doc = {}
+        image_data = base64.b64decode(item['pic_code'])
+        image = Image.open(io.BytesIO(image_data))
+        if img_model is None:
+            img_model = SentenceTransformer('clip-ViT-B-32')
         embedding = image_embedding(image, img_model)
-        doc['image_id'] = create_image_id(filename)
-        doc['image_name'] = os.path.basename(filename)
         doc['image_embedding'] = embedding.tolist()
-        doc['relative_path'] = os.path.relpath(filename).split(PREFIX)[1]
-        doc['exif'] = {}
 
-        try:
-            date = get_exif_date(filename)
-            # print(date)
-            doc['exif']['date'] = get_exif_date(filename)
-        except Exception as e:
-            pass
+        # try:
+        #     date = get_exif_date(filename)
+        #     # print(date)
+        #     doc['exif']['date'] = get_exif_date(filename)
+        # except Exception as e:
+        #     pass
+        #
+        # # Experimental! Extract photo GPS location if available.
+        # if args.gps_location:
+        #     try:
+        #         doc['exif']['location'] = get_exif_location(filename)
+        #     except Exception as e:
+        #         pass
 
-        # Experimental! Extract photo GPS location if available.
-        if args.gps_location:
-            try:
-                doc['exif']['location'] = get_exif_location(filename)
-            except Exception as e:
-                pass
-
+        if len(lst)%513 == 0:
+            print("loaded: "+str(len(lst)))
         lst.append(doc)
 
     duration = time.perf_counter() - start_time
     print(f'Duration creating image embeddings = {duration}')
 
-    es = Elasticsearch(hosts=ES_HOST)
+    # es = Elasticsearch(hosts=ES_HOST)
     if args.ca_certs:
         es = Elasticsearch(
             hosts=[args.es_host],
@@ -109,7 +117,6 @@ def main():
             verify_certs=args.verify_certs,
             basic_auth=(args.es_user, args.es_password)
         )
-
     es.options(request_timeout=args.timeout)
 
     # index name to index data into
@@ -128,7 +135,6 @@ def main():
                               settings=config["settings"],
                               ignore=[400, 404],
                               request_timeout=args.timeout)
-
 
         count = 0
         for success, info in parallel_bulk(
@@ -167,6 +173,7 @@ def create_image_id(filename):
     # print("Image filename: ", filename)
     return os.path.splitext(os.path.basename(filename))[0]
 
+
 def get_exif_date(filename):
     with open(filename, 'rb') as f:
         image = exifImage(f)
@@ -175,10 +182,11 @@ def get_exif_date(filename):
         prettyDate = date_object.isoformat()
         return prettyDate
 
+
 def get_exif_location(filename):
     with open(filename, 'rb') as f:
         image = exifImage(f)
-        exif = {} 
+        exif = {}
         lat = dms_coordinates_to_dd_coordinates(image.gps_latitude, image.gps_latitude_ref)
         lon = dms_coordinates_to_dd_coordinates(image.gps_longitude, image.gps_longitude_ref)
         return [lon, lat]
@@ -188,11 +196,12 @@ def dms_coordinates_to_dd_coordinates(coordinates, coordinates_ref):
     decimal_degrees = coordinates[0] + \
                       coordinates[1] / 60 + \
                       coordinates[2] / 3600
-    
+
     if coordinates_ref == "S" or coordinates_ref == "W":
         decimal_degrees = -decimal_degrees
-    
+
     return decimal_degrees
+
 
 if __name__ == '__main__':
     main()
