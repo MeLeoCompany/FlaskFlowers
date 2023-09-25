@@ -7,6 +7,7 @@ from sentence_transformers import SentenceTransformer
 from elasticsearch import Elasticsearch, SSLError
 from elasticsearch.helpers import parallel_bulk
 from PIL import Image
+from pathlib import Path
 from datetime import datetime
 from exif import Image as exifImage
 import base64
@@ -57,8 +58,9 @@ args = parser.parse_args()
 def main():
     global args
     lst = []
-
-    json_path = 'C:\\PapaWK\\flask-elastic-image-search\\json_in\\all_pics_base.pics_data.json'
+    script_path = Path(__file__).resolve()
+    project_directory = script_path.parent.parent 
+    json_path = project_directory.joinpath('json_in', 'all_pics_base.pics_data.json')
     f_json = open(json_path, encoding='utf-8')
     data = json.load(f_json)
     img_model = None
