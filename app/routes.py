@@ -221,7 +221,7 @@ def infer_trained_model(query: str, model: str):
 
 def image_embedding(image, model, my_model_bbox):
     transformer = T.ToTensor()
-    img = transformer(image)
+    img = transformer(image.convert('RGB'))
     output = my_model_bbox([img.to(DEVICE)])
     bbox_cor = output[0]['boxes'][0].detach().numpy()
     cropped_image = image.crop(bbox_cor)
