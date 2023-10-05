@@ -13,6 +13,10 @@ from exif import Image as exifImage
 import base64
 import io
 
+import sys
+sys.path.append('..') 
+from app.routes import image_embedding, my_model_init 
+
 ES_HOST = "https://127.0.0.1:9200/"
 ES_USER = "elastic"
 ES_PASSWORD = "changeme"
@@ -81,7 +85,8 @@ def main():
         image = Image.open(io.BytesIO(image_data))
         if img_model is None:
             img_model = SentenceTransformer('clip-ViT-B-32')
-        embedding = image_embedding(image, img_model)
+        my_model_bbox = my_model_init()
+        embedding, _  = image_embedding(image, img_model, my_model_bbox)
         doc['image_embedding'] = embedding.tolist()
 
         # try:
@@ -167,8 +172,8 @@ def main():
             raise
 
 
-def image_embedding(image, model):
-    return model.encode(image)
+# def image_embedding(image, model):
+#     return model.encode(image)
 
 
 def create_image_id(filename):
