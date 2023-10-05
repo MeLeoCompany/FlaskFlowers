@@ -2,7 +2,7 @@ from app import app, img_model, img_model_sentence, es
 from flask import render_template, redirect, url_for, request, send_file
 from app.searchForm import SearchForm
 from app.inputFileForm import InputFileForm
-from werkzeug.utils import secure_filename
+from app.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 import torch
 import torchvision
