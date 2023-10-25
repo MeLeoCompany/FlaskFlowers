@@ -29,6 +29,9 @@
 <div class="_2b3gfU6p">
 <span class="_1sZ8iWv1">{{ document.fields.image_name[0] }}</span>
 <span class="_2f6vPPm-">{{ document.fields.article[0] }}</span>
+{% if document.fields.all_text_data %}
+<span class="_1sZ8iWv1">{{ document.fields.all_text_data[0] }}</span>
+{% endif %}
 </div>
 </a>
 {% endfor %}
