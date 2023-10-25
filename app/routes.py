@@ -13,6 +13,13 @@ import os
 from PIL import Image
 
 INDEX_IM_EMBED = 'my-image-embeddings'
+BY_IM_FIELD = 'image_embedding'
+
+INDEX_TXT_EMBED = 'my-text-embedding'
+BY_TXT_FIELD_EMBED ='text_embedding'
+
+INDEX_TXT = 'my-image-text'
+BY_TXT_FIELD ='all_text_data'
 
 HOST = app.config['ELASTICSEARCH_HOST']
 AUTH = (app.config['ELASTICSEARCH_USER'], app.config['ELASTICSEARCH_PASSWORD'])
@@ -56,8 +63,10 @@ def similar_image():
             if request.files['file'].filename == '' and form.searchbox.data == '' or form.searchbox.data is None:
                 return render_template('similar_image.html', title='Similar image', form=form,
                                        err='No file selected', model_up=True)
-
+            
             if request.files['file'].filename != '':
+                index_name = INDEX_IM_EMBED
+                by_field = BY_IM_FIELD
                 filename = secure_filename(form.file.data.filename)
                 print(filename)
                 url_dir = 'static/tmp-uploads/'
@@ -77,13 +86,22 @@ def similar_image():
                 url_path_file = url_dir + '_cropped_'+ filename
                 cropped_image.save(upload_dir + '_cropped_'+ filename)
                 sentence_data = ''
+            # Execute KN search over the image dataset
+                # search_response = knn_search_images_old(embedding.tolist())
+                search_response = knn_search_images(embedding.tolist(),index_name,by_field)
             else:
-                sentence_data = form.searchbox.data
-                embedding = sentence_embedding(sentence_data)
                 url_path_file = ''
+                sentence_data = form.searchbox.data
 
             # Execute KN search over the image dataset
-            search_response = knn_search_images(embedding.tolist())
+                # index_name = INDEX_TXT_EMBED
+                # by_field = BY_TXT_FIELD_EMBED
+                # embedding = sentence_embedding(sentence_data)
+                # search_response = knn_search_images(embedding.tolist(),index_name,by_field)
+
+                index_name = INDEX_TXT
+                by_field = BY_TXT_FIELD
+                search_response = search_by_text(sentence_data,index_name,by_field)
 
             # search_results = [
             #     {"fields":{
@@ -146,7 +164,40 @@ def sentence_embedding(query: str):
     # return response['inference_results'][0]
 
 
-def knn_search_images(dense_vector: list):
+def knn_search_images(dense_vector: list,by_index,by_field):
+    source_fields = ["image_id", "image_name", "img_url", "article","all_text_data"]
+    query = {
+        "field": by_field,
+        "query_vector": dense_vector,
+        "k": 5,
+        "num_candidates": 10
+    }
+    print("Q:",query) 
+    response = es.search(
+        index=by_index,
+        fields=source_fields,
+        knn=query, source=False)
+
+    return response
+
+def search_by_text(my_query:str,by_index,by_field):
+    source_fields = ["image_id", "image_name", "img_url", "article","all_text_data"]
+    query = {
+        "match": {
+         	by_field:
+      	  	{
+        		"query":  my_query
+      	  	}
+         }
+    }
+    response = es.search(
+        index=by_index,
+        fields=source_fields,
+        query=query, source=False)
+
+    return response
+
+def knn_search_images_old(dense_vector: list):
     source_fields = ["image_id", "image_name", "img_url", "article"]
     query = {
         "field": "image_embedding",
