@@ -1,0 +1,41 @@
+{
+  "settings": {
+    "index.refresh_interval": "5s",
+    "number_of_shards": 1
+  },
+  "mappings": {
+    "properties": {
+      "image_id": {
+        "type": "keyword"
+      },
+      "image_name": {
+        "type" : "keyword"
+      },
+      "img_url" : {
+        "type" : "keyword"
+      },
+      "article" : {
+        "type" : "keyword"
+      },
+      "page_url" : {
+        "type" : "keyword"
+      },
+      "all_text_data":
+      {
+	 "type":"text",
+         "analyzer": "standart"
+      },
+      "exif" : 
+      {
+        "properties" : {
+          "location": {
+            "type": "geo_point"
+          },
+          "date": {
+            "type": "date"
+          }
+        }
+      }
+    }
+  }
+}
